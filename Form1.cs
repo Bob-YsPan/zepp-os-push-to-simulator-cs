@@ -120,6 +120,19 @@ namespace zepp_os_push_to_simulator_cs
             }
         }
 
+        public class SimulatorResponse
+        {
+            public string jsonrpc { get; set; }
+            public int id { get; set; }
+            public SimulatorResult result { get; set; }
+        }
+
+        public class SimulatorResult
+        {
+            public bool success { get; set; }
+            public string message { get; set; }
+        }
+
         public void SimulatorInit(string url)
         {
             if (socket != null) return;
@@ -136,7 +149,33 @@ namespace zepp_os_push_to_simulator_cs
             // Socket on message listener
             socket.On("message", ctx =>
             {
-                Console.WriteLine($"[DEBUG] Simulator reutrns at socket on: {ctx.RawText}");
+                try
+                {
+                    // 1. Read json strings
+                    string jsonPayload = ctx.GetValue<string>(0);
+                    Console.WriteLine($"[DEBUG] Simulator payload: {jsonPayload}");
+                    // 2. Parse JSON
+                    var response = JsonSerializer.Deserialize<SimulatorResponse>(jsonPayload);
+                    // 3. Process the result
+                    if (response?.result?.success == true)
+                    {
+                        this.BeginInvoke((MethodInvoker)delegate
+                        {
+                            MessageBox.Show("Push success!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        });
+                    }
+                    else
+                    {
+                        throw new Exception("Receives error message from the simulator");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        MessageBox.Show($"Error on processing message:\n{ex.Message}", "Message", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    });
+                }
                 return Task.CompletedTask;
             });
 
