@@ -387,6 +387,7 @@ namespace zepp_os_push_to_simulator_cs
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
                 if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
                 Directory.CreateDirectory(workDir);
+                Directory.CreateDirectory(tempDir);
 
                 // 3. Extract the outer ZPK/ZIP to the working directory
                 ZipFile.ExtractToDirectory(zpkPath, workDir);
@@ -394,11 +395,24 @@ namespace zepp_os_push_to_simulator_cs
                 // 4. Extract the inner device.zip to a folder for editing
                 string deviceZipPath = Path.Combine(workDir, "device.zip");
                 string deviceContentDir = Path.Combine(tempDir, "device");
-                if (!File.Exists(deviceZipPath))
+                bool hasAppJson = false;
+                if (File.Exists(deviceZipPath))
                 {
-                    throw new Exception("device.zip not found in the package!");
+                    ZipFile.ExtractToDirectory(deviceZipPath, deviceContentDir);
                 }
-                ZipFile.ExtractToDirectory(deviceZipPath, deviceContentDir);
+                else if (File.Exists(Path.Combine(workDir, "app.json")))
+                {
+                    hasAppJson = true;
+                    // Move the whole folder to temp if device.zip doesn't exist but app.json exists (Exported watchface)
+                    Directory.Move(workDir, deviceContentDir);
+                    // Recreate the workDir
+                    Directory.CreateDirectory(workDir);
+                }
+                else
+                {
+                    throw new Exception("Neither device.zip nor app.json found in the package!");
+                }
+                
 
                 // 5. Edit the app.json in the extracted device folder
                 // (open in Notepad, wait for user to save and close, then continue)
@@ -418,12 +432,27 @@ namespace zepp_os_push_to_simulator_cs
                 // Removes the UTF-8 BOM
                 StripBomFromFile(appJsonPath);
 
-                // 6. Pack device.zip
                 string backupDeviceFileName = Path.GetFileName(deviceZipPath) + ".old";
-                // Backup the original device.zip into temp folder
-                Directory.CreateDirectory(tempDir);
-                File.Move(deviceZipPath, 
+
+                // If has app.json, creates an app-side.zip with the app.json only for later use
+                // (Watchface Editor Exports)
+                if (hasAppJson)
+                {
+                    File.Copy(Path.Combine(deviceContentDir, "app.json"), Path.Combine(workDir, "app.json"));
+                    // Create the app-side.zip with the app.json for later use
+                    ZipFile.CreateFromDirectory(workDir, Path.Combine(tempDir, "app-side.zip"));
+                    File.Move(Path.Combine(tempDir, "app-side.zip"), Path.Combine(workDir, "app-side.zip"));
+                    File.Delete(Path.Combine(workDir, "app.json"));
+                }
+                else
+                {
+                    // Backup the original device.zip into temp folder
+                    Directory.CreateDirectory(tempDir);
+                    File.Move(deviceZipPath,
                     Path.Combine(tempDir, backupDeviceFileName));
+                }
+
+                // 6. Pack device.zip
                 ZipFile.CreateFromDirectory(deviceContentDir, deviceZipPath);
 
                 // 7. Repacks the final zpk
@@ -432,9 +461,12 @@ namespace zepp_os_push_to_simulator_cs
                 // If a file with the final name already exists, delete it before creating a new one
                 if (File.Exists(finalZpkPath)) File.Delete(finalZpkPath);
                 ZipFile.CreateFromDirectory(workDir, finalZpkPath);
-                // Moves the backup of original device.zip and unziped device folder back to the working directory
-                File.Move(Path.Combine(tempDir, backupDeviceFileName), 
-                    Path.Combine(workDir, backupDeviceFileName));
+                if (!hasAppJson)
+                {
+                    // Moves the backup of original device.zip and unziped device folder back to the working directory
+                    File.Move(Path.Combine(tempDir, backupDeviceFileName),
+                        Path.Combine(workDir, backupDeviceFileName));
+                }
                 Directory.Move(deviceContentDir, Path.Combine(workDir, "device"));
                 // Updates the JSON path
                 appJsonPath = Path.Combine(Path.Combine(workDir, "device"), "app.json");
