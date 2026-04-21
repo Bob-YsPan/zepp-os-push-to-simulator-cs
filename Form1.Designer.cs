@@ -35,6 +35,8 @@
             this.openFileDialog1 = new System.Windows.Forms.OpenFileDialog();
             this.pick_json_Btn = new System.Windows.Forms.Button();
             this.json_loc_Label = new System.Windows.Forms.Label();
+            this.addressTextbox = new System.Windows.Forms.TextBox();
+            this.addressLabel = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // pick_zpk_Btn
@@ -60,12 +62,12 @@
             // 
             // send_Btn
             // 
-            this.send_Btn.Location = new System.Drawing.Point(18, 242);
+            this.send_Btn.Location = new System.Drawing.Point(371, 242);
             this.send_Btn.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.send_Btn.Name = "send_Btn";
             this.send_Btn.Size = new System.Drawing.Size(112, 40);
             this.send_Btn.TabIndex = 2;
-            this.send_Btn.Text = "Send";
+            this.send_Btn.Text = "Connect";
             this.send_Btn.UseVisualStyleBackColor = true;
             this.send_Btn.Click += new System.EventHandler(this.send_Btn_Click);
             // 
@@ -77,10 +79,6 @@
             this.content_Label.Size = new System.Drawing.Size(72, 21);
             this.content_Label.TabIndex = 3;
             this.content_Label.Text = "Content: ";
-            // 
-            // openFileDialog1
-            // 
-            this.openFileDialog1.FileName = "openFileDialog1";
             // 
             // pick_json_Btn
             // 
@@ -103,13 +101,32 @@
             this.json_loc_Label.TabIndex = 5;
             this.json_loc_Label.Text = "JSON: ";
             // 
+            // addressTextbox
+            // 
+            this.addressTextbox.Location = new System.Drawing.Point(107, 249);
+            this.addressTextbox.Name = "addressTextbox";
+            this.addressTextbox.Size = new System.Drawing.Size(257, 29);
+            this.addressTextbox.TabIndex = 6;
+            this.addressTextbox.Text = "http://localhost:7650";
+            // 
+            // addressLabel
+            // 
+            this.addressLabel.AutoSize = true;
+            this.addressLabel.Location = new System.Drawing.Point(24, 252);
+            this.addressLabel.Name = "addressLabel";
+            this.addressLabel.Size = new System.Drawing.Size(77, 21);
+            this.addressLabel.TabIndex = 3;
+            this.addressLabel.Text = "Sim URL: ";
+            // 
             // MainWindow
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 21F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(496, 441);
+            this.Controls.Add(this.addressTextbox);
             this.Controls.Add(this.json_loc_Label);
             this.Controls.Add(this.pick_json_Btn);
+            this.Controls.Add(this.addressLabel);
             this.Controls.Add(this.content_Label);
             this.Controls.Add(this.send_Btn);
             this.Controls.Add(this.zpk_loc_Label);
@@ -132,6 +149,8 @@
         private System.Windows.Forms.OpenFileDialog openFileDialog1;
         private System.Windows.Forms.Button pick_json_Btn;
         private System.Windows.Forms.Label json_loc_Label;
+        private System.Windows.Forms.TextBox addressTextbox;
+        private System.Windows.Forms.Label addressLabel;
     }
 }
 
