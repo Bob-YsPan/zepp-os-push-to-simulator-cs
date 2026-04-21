@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -18,9 +20,105 @@ namespace zepp_os_push_to_simulator_cs
         private const string previewMethod = "ide.simulator.preview";
         private int appId;
         private string projectName;
-        private int primarySource;
         private byte[] zpkBuffer;
         private List<int> devSources;
+
+        private static readonly HttpClient httpClient = new HttpClient();
+
+        /// <summary>
+        /// Token generator
+        /// </summary>
+        /// <param name="length">Token length</param>
+        /// <returns>Token string</returns>
+        private string GenerateRandomToken(int length)
+        {
+            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+            Random random = new Random();
+            return new string(Enumerable.Repeat(chars, length)
+                .Select(s => s[random.Next(s.Length)]).ToArray());
+        }
+
+        /// <summary>
+        /// Download file to the location
+        /// </summary>
+        /// <param name="url">Download URL</param>
+        /// <param name="destinationPath">Save path</param>
+        private async Task<string> DownloadFileAsync(string url, string destinationFolder)
+        {
+            string token = "";
+
+            // Read token from the UI, if it's "random" then generate a random token and update the UI with it
+            this.Invoke((MethodInvoker)delegate {
+                if (tokenTextBox.Text == "random")
+                {
+                    token = GenerateRandomToken(255);
+                    tokenTextBox.Text = token;
+                }
+                else
+                {
+                    token = tokenTextBox.Text.Trim();
+                }
+            });
+
+            try
+            {
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("Accept-Encoding", "gzip");
+                request.Headers.Add("apptoken", token);
+                request.Headers.Add("Connection", "Keep-Alive");
+                request.Headers.TryAddWithoutValidation("User-Agent", "Dart/3.1 (dart:io)");
+                request.Headers.Accept.Clear();
+
+                using (var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead))
+                {
+                    response.EnsureSuccessStatusCode();
+
+                    // Ready to read the filename from the response headers or URL
+                    string fileName = null;
+
+                    // 1. Get filename from Content-Disposition header if available
+                    var contentDisposition = response.Content.Headers.ContentDisposition;
+                    if (contentDisposition != null && !string.IsNullOrEmpty(contentDisposition.FileName))
+                    {
+                        fileName = contentDisposition.FileName.Trim('\"');
+                    }
+
+                    // 2. If filename is not in headers, try to extract it from the URL
+                    if (string.IsNullOrEmpty(fileName))
+                    {
+                        try
+                        {
+                            fileName = Path.GetFileName(new Uri(url).LocalPath);
+                        }
+                        catch { fileName = null; }
+                    }
+
+                    // 3. Default filename if all else fails
+                    if (string.IsNullOrEmpty(fileName))
+                    {
+                        fileName = "downloaded_package.zpk";
+                    }
+
+                    string finalFullPath = Path.Combine(destinationFolder, fileName);
+
+                    using (var stream = await response.Content.ReadAsStreamAsync())
+                    using (var fileStream = new FileStream(finalFullPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        await stream.CopyToAsync(fileStream);
+                    }
+
+                    Console.WriteLine($"File fully written to: {finalFullPath}");
+                    return finalFullPath; // Return the full path of the downloaded file
+                }
+            }
+            catch (Exception ex)
+            {
+                this.BeginInvoke((MethodInvoker)delegate {
+                    MessageBox.Show($"File Download Error\n{ex.Message}", "Message", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                });
+                return null;
+            }
+        }
 
         public void SimulatorInit(string url)
         {
@@ -111,7 +209,7 @@ namespace zepp_os_push_to_simulator_cs
                 // 1. Read and trims the UTF-8 BOM (3 extra bytes at the start of the file) if it exists
                 string jsonString = File.ReadAllText(jsonPath).TrimStart('\uFEFF');
 
-                List<int> devSources = new List<int>();
+                devSources = new List<int>();
 
                 // 2. Parse the JSON string using System.Text.Json
                 using (JsonDocument doc = JsonDocument.Parse(jsonString))
@@ -139,6 +237,23 @@ namespace zepp_os_push_to_simulator_cs
             {
                 throw new Exception($"Parse JSON failed: {ex.Message}");
             }
+        }
+
+        private void ParseAndRefreshUI(string path)
+        {
+            var parseResult = ParseSimulatorConfig(path);
+            appId = parseResult.AppId;
+            projectName = parseResult.AppName;
+            string devSourcesStr = "";
+            foreach (var item in parseResult.DeviceSource)
+            {
+                devSourcesStr += item.ToString();
+                devSourcesStr += ", ";
+            }
+            this.BeginInvoke((MethodInvoker)delegate {
+                content_Label.Text = $"Content: \nApp ID: {appId}\nProject Name: {projectName}\nPrimary Device Source: ";
+                content_Label.Text += devSourcesStr;
+            });
         }
 
         /// <summary>
@@ -176,17 +291,7 @@ namespace zepp_os_push_to_simulator_cs
                 json_loc_Label.Text = $"JSON: \n{openFileDialog1.FileName}";
 
                 // 1. Read and parse the app.json to get appId, projectName, and deviceSource
-                var parseResult = ParseSimulatorConfig(openFileDialog1.FileName);
-                appId = parseResult.AppId;
-                projectName = parseResult.AppName;
-                content_Label.Text = $"Content: \nApp ID: {appId}\nProject Name: {projectName}\nPrimary Device Source: ";
-                string devSourcesStr = "";
-                foreach (var item in parseResult.DeviceSource)
-                {
-                    devSourcesStr += item.ToString();
-                    devSourcesStr += ", ";
-                }
-                content_Label.Text += devSourcesStr;
+                ParseAndRefreshUI(openFileDialog1.FileName);
             }
 
         }
@@ -217,6 +322,135 @@ namespace zepp_os_push_to_simulator_cs
             // Send the data to the simulator using the Upload method
             _ = Upload(zpkBuffer, projectName, "watch", appId, devSources);
             MessageBox.Show("Push Sent!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Remove UTF-8 BOM from the specified file if it exists.
+        /// </summary>
+        private void StripBomFromFile(string filePath)
+        {
+            byte[] fileBytes = File.ReadAllBytes(filePath);
+            if (fileBytes.Length >= 3 && fileBytes[0] == 0xEF && fileBytes[1] == 0xBB && fileBytes[2] == 0xBF)
+            {
+                byte[] newBytes = new byte[fileBytes.Length - 3];
+                Buffer.BlockCopy(fileBytes, 3, newBytes, 0, newBytes.Length);
+                File.WriteAllBytes(filePath, newBytes);
+            }
+        }
+
+        private async void convertBtn_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                // 1. Pick a file (either image with QR code or a ZPK/ZIP)
+                openFileDialog1.Filter = "QR Picture or zip/zpk|*.png;*.jpg;*.jpeg;*.zpk;*.zip";
+                if (openFileDialog1.ShowDialog() != DialogResult.OK) return;
+
+                // Create a base working directory for downloads and conversions
+                string basePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DownloadPackages");
+                if (!Directory.Exists(basePath)) Directory.CreateDirectory(basePath);
+
+                string zpkPath = openFileDialog1.FileName;
+                string zpkName = Path.GetFileNameWithoutExtension(zpkPath);
+                string ext = Path.GetExtension(zpkPath);
+
+                // 2. If it's an image, scan the QR code to get the download URL and download the ZPK file to the working directory.
+                if (ext != ".zpk" && ext != ".zip")
+                {
+                    content_Label.Text = "Status: Scanning QR...";
+                    var reader = new ZXing.Windows.Compatibility.BarcodeReader();
+                    using (var bitmap = (System.Drawing.Bitmap)System.Drawing.Image.FromFile(zpkPath))
+                    {
+                        var result = reader.Decode(bitmap);
+                        if (result == null)
+                        {
+                            throw new Exception("No QR code found in the image!");
+                        }
+                        string downloadUrl = result.Text.Replace("zpkd1://", "https://");
+
+                        content_Label.Text = "Status: Downloading...";
+                        string filepath = await DownloadFileAsync(downloadUrl, basePath);
+                        if (filepath == null)
+                        {
+                            return; // Download failed, error message already shown in DownloadFileAsync
+                        }
+                        zpkPath = filepath;
+                        zpkName = Path.GetFileNameWithoutExtension(zpkPath);
+                        ext = Path.GetExtension(zpkPath);
+
+                    }
+                }
+
+                // Creating working directory for the conversion process (will be deleted and recreated if already exists)
+                string workDir = Path.Combine(basePath, zpkName);
+                string tempDir = Path.Combine(basePath, "temp");
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+                if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
+                Directory.CreateDirectory(workDir);
+
+                // 3. Extract the outer ZPK/ZIP to the working directory
+                ZipFile.ExtractToDirectory(zpkPath, workDir);
+
+                // 4. Extract the inner device.zip to a folder for editing
+                string deviceZipPath = Path.Combine(workDir, "device.zip");
+                string deviceContentDir = Path.Combine(tempDir, "device");
+                if (!File.Exists(deviceZipPath))
+                {
+                    throw new Exception("device.zip not found in the package!");
+                }
+                ZipFile.ExtractToDirectory(deviceZipPath, deviceContentDir);
+
+                // 5. Edit the app.json in the extracted device folder
+                // (open in Notepad, wait for user to save and close, then continue)
+                string appJsonPath = Path.Combine(deviceContentDir, "app.json");
+
+                // No await to make sure the message box shows with the Notepad, and the process waits until the Notepad is closed before continuing.
+                Task msgtask = Task.Run(() => MessageBox.Show("1. Edit the opened app.json, make sure includes's the deviceSource of the target simulating device\n" +
+                    "2. Converts all image backs to the normal png (under \"program_folder\\DownloadPackages\\temp\" !)\n\n" +
+                    "Process will continue when closes the Notepad!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                await Task.Run(() => {
+                    using (var process = System.Diagnostics.Process.Start("notepad.exe", appJsonPath))
+                    {
+                        process.WaitForExit(); // Wait the notepad process
+                    }
+                });
+
+                // Removes the UTF-8 BOM
+                StripBomFromFile(appJsonPath);
+
+                // 6. Pack device.zip
+                string backupDeviceFileName = Path.GetFileName(deviceZipPath) + ".old";
+                // Backup the original device.zip into temp folder
+                Directory.CreateDirectory(tempDir);
+                File.Move(deviceZipPath, 
+                    Path.Combine(tempDir, backupDeviceFileName));
+                ZipFile.CreateFromDirectory(deviceContentDir, deviceZipPath);
+
+                // 7. Repacks the final zpk
+                string finalZpkName = Path.GetFileNameWithoutExtension(zpkPath) + "-mod.zpk";
+                string finalZpkPath = Path.Combine(basePath, finalZpkName);
+                // If a file with the final name already exists, delete it before creating a new one
+                if (File.Exists(finalZpkPath)) File.Delete(finalZpkPath);
+                ZipFile.CreateFromDirectory(workDir, finalZpkPath);
+                // Moves the backup of original device.zip and unziped device folder back to the working directory
+                File.Move(Path.Combine(tempDir, backupDeviceFileName), 
+                    Path.Combine(workDir, backupDeviceFileName));
+                Directory.Move(deviceContentDir, Path.Combine(workDir, "device"));
+                // Updates the JSON path
+                appJsonPath = Path.Combine(Path.Combine(workDir, "device"), "app.json");
+
+                // 8. Read the final ZPK and JSON automatically, and refresh the UI with the new info
+                this.zpkBuffer = ReadZpkFile(finalZpkPath);
+                zpk_loc_Label.Text = $"Package: \n{finalZpkPath}";
+                json_loc_Label.Text = $"JSON: \n{appJsonPath}";
+                ParseAndRefreshUI(appJsonPath);
+
+                MessageBox.Show($"Convert done!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Convert error: {ex.Message}\n{ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

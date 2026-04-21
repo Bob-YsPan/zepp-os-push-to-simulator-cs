@@ -37,6 +37,9 @@
             this.json_loc_Label = new System.Windows.Forms.Label();
             this.addressTextbox = new System.Windows.Forms.TextBox();
             this.addressLabel = new System.Windows.Forms.Label();
+            this.convertBtn = new System.Windows.Forms.Button();
+            this.tokenTextBox = new System.Windows.Forms.TextBox();
+            this.tokenLabel = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // pick_zpk_Btn
@@ -62,7 +65,7 @@
             // 
             // send_Btn
             // 
-            this.send_Btn.Location = new System.Drawing.Point(371, 242);
+            this.send_Btn.Location = new System.Drawing.Point(371, 285);
             this.send_Btn.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.send_Btn.Name = "send_Btn";
             this.send_Btn.Size = new System.Drawing.Size(112, 40);
@@ -74,7 +77,7 @@
             // content_Label
             // 
             this.content_Label.AutoSize = true;
-            this.content_Label.Location = new System.Drawing.Point(24, 287);
+            this.content_Label.Location = new System.Drawing.Point(24, 330);
             this.content_Label.Name = "content_Label";
             this.content_Label.Size = new System.Drawing.Size(72, 21);
             this.content_Label.TabIndex = 3;
@@ -103,7 +106,7 @@
             // 
             // addressTextbox
             // 
-            this.addressTextbox.Location = new System.Drawing.Point(107, 249);
+            this.addressTextbox.Location = new System.Drawing.Point(107, 285);
             this.addressTextbox.Name = "addressTextbox";
             this.addressTextbox.Size = new System.Drawing.Size(257, 29);
             this.addressTextbox.TabIndex = 6;
@@ -112,17 +115,48 @@
             // addressLabel
             // 
             this.addressLabel.AutoSize = true;
-            this.addressLabel.Location = new System.Drawing.Point(24, 252);
+            this.addressLabel.Location = new System.Drawing.Point(24, 288);
             this.addressLabel.Name = "addressLabel";
             this.addressLabel.Size = new System.Drawing.Size(77, 21);
             this.addressLabel.TabIndex = 3;
             this.addressLabel.Text = "Sim URL: ";
             // 
+            // convertBtn
+            // 
+            this.convertBtn.Location = new System.Drawing.Point(258, 21);
+            this.convertBtn.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.convertBtn.Name = "convertBtn";
+            this.convertBtn.Size = new System.Drawing.Size(225, 40);
+            this.convertBtn.TabIndex = 7;
+            this.convertBtn.Text = "Pick QR/ZPK/ZIP and Convert";
+            this.convertBtn.UseVisualStyleBackColor = true;
+            this.convertBtn.Click += new System.EventHandler(this.convertBtn_Click);
+            // 
+            // tokenTextBox
+            // 
+            this.tokenTextBox.Location = new System.Drawing.Point(83, 250);
+            this.tokenTextBox.Name = "tokenTextBox";
+            this.tokenTextBox.Size = new System.Drawing.Size(400, 29);
+            this.tokenTextBox.TabIndex = 9;
+            this.tokenTextBox.Text = "random";
+            // 
+            // tokenLabel
+            // 
+            this.tokenLabel.AutoSize = true;
+            this.tokenLabel.Location = new System.Drawing.Point(24, 253);
+            this.tokenLabel.Name = "tokenLabel";
+            this.tokenLabel.Size = new System.Drawing.Size(53, 21);
+            this.tokenLabel.TabIndex = 8;
+            this.tokenLabel.Text = "Token:";
+            // 
             // MainWindow
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 21F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(496, 441);
+            this.ClientSize = new System.Drawing.Size(496, 473);
+            this.Controls.Add(this.tokenTextBox);
+            this.Controls.Add(this.tokenLabel);
+            this.Controls.Add(this.convertBtn);
             this.Controls.Add(this.addressTextbox);
             this.Controls.Add(this.json_loc_Label);
             this.Controls.Add(this.pick_json_Btn);
@@ -151,6 +185,9 @@
         private System.Windows.Forms.Label json_loc_Label;
         private System.Windows.Forms.TextBox addressTextbox;
         private System.Windows.Forms.Label addressLabel;
+        private System.Windows.Forms.Button convertBtn;
+        private System.Windows.Forms.TextBox tokenTextBox;
+        private System.Windows.Forms.Label tokenLabel;
     }
 }
 
