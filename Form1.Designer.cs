@@ -78,6 +78,7 @@
             // 
             this.content_Label.AutoSize = true;
             this.content_Label.Location = new System.Drawing.Point(24, 330);
+            this.content_Label.MaximumSize = new System.Drawing.Size(466, 0);
             this.content_Label.Name = "content_Label";
             this.content_Label.Size = new System.Drawing.Size(72, 21);
             this.content_Label.TabIndex = 3;
