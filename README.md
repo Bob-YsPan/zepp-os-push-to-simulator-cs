@@ -40,6 +40,12 @@ This program uses the same principles and usage methods as the original reposito
 3. Check the `Content` area, make sure the package you selected is correct.
 4. Click the `Connect` and then `Upload` buttom to upload the package into the simulator. 
 
+## If AOD not working when using simulator
+1. Make sure your watch face has an AOD function, and make sure you click the **Padlock icon** to the right of the `RestScreen` block under the `Display` tab.
+2. If the AOD does not enter successfully, the simulator screen will not accept any input. Just press `HOME` on the keyboard to escape the AOD status (like if you press the side-button on the watch).
+2. Go to the AOD settings on the watch, toggle it to `Off`, and then turn it to `All Day`.
+3. Re-test the AOD function.
+
 ## Notes
 
 1. Due to library limitations, the `device.zip` file will be extracted to the `program_path\temp\device` folder (Seems easier to do the conversion of the images 😆). After conversion, it will be automatically moved back to the folder with the same name as the input package.
