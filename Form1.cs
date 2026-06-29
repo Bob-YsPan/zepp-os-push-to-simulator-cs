@@ -519,7 +519,7 @@ namespace zepp_os_push_to_simulator_cs
                 // (open in Notepad, wait for user to save and close, then continue)
                 string appJsonPath = Path.Combine(deviceContentDir, "app.json");
 
-                Process.Start("explorer.exe", $@"{tempDir}/device/assets");
+                Process.Start("explorer.exe", $@"{tempDir}\device\assets");
                 MessageBox.Show("Please convert all of the image backs to the normal png (under \"program_folder\\DownloadPackages\\temp\" !\n\n" +
                     "Comfirm this dialog to continue the upload process!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
@@ -620,8 +620,8 @@ namespace zepp_os_push_to_simulator_cs
 
         private void MainWindow_Load(object sender, EventArgs e)
         {
-            // Load the devsource.html file from the application directory
-            string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "devsource.html");
+            // Load the devtable.html file from the application directory
+            string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "devtable.html");
 
             // 2. Check if the file exists
             if (File.Exists(filePath))
@@ -640,13 +640,13 @@ namespace zepp_os_push_to_simulator_cs
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Parse devsource error: {ex.Message}\n{ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show($"Parse devtable error: {ex.Message}\n{ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Application.Exit();
                 }
             }
             else
             {
-                MessageBox.Show($"devsource.html not found!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"devtable.html not found!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
             }
         }

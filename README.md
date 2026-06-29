@@ -35,6 +35,7 @@ This program uses the same principles and usage methods as the original reposito
     **Notes:**
     1. **`device.zip` needs to use normal PNGs, not the encoded format that is used on an actual watch!**
     2. **`app.json` needs to include the device source that matches your simulator!**
+    3. **The package name and extract folder that are converted by this tool will include the `-mod` suffix at the end.**
 2. Use the `Pick ZPK/ZIP With Extracted Folder` tool, pick the zpk file (like `your_package.zpk` on step 1) .
 3. Check the `Content` area, make sure the package you selected is correct.
 4. Click the `Connect` and then `Upload` buttom to upload the package into the simulator. 
