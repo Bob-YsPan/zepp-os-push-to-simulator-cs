@@ -3,18 +3,41 @@ using SocketIOClient.Common;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Xml.Linq;
 
 namespace zepp_os_push_to_simulator_cs
 {
     public partial class MainWindow : Form
     {
+        public class DeviceInfo
+        {
+            public string Name { get; set; }
+            public List<int> Sources { get; set; }
+        }
+
+        public class SimulatorResponse
+        {
+            public string jsonrpc { get; set; }
+            public int id { get; set; }
+            public SimulatorResult result { get; set; }
+        }
+
+        public class SimulatorResult
+        {
+            public bool success { get; set; }
+            public string message { get; set; }
+        }
+
         private SocketIO socket;
         private const int previewId = 1;
         private const string previewMethod = "ide.simulator.preview";
@@ -22,6 +45,7 @@ namespace zepp_os_push_to_simulator_cs
         private string projectName;
         private byte[] zpkBuffer;
         private List<int> devSources;
+        private List<DeviceInfo> deviceInfo;
 
         private static readonly HttpClient httpClient = new HttpClient();
 
@@ -120,17 +144,54 @@ namespace zepp_os_push_to_simulator_cs
             }
         }
 
-        public class SimulatorResponse
+        public static List<DeviceInfo> ParseDeviceTable(string htmlContent)
         {
-            public string jsonrpc { get; set; }
-            public int id { get; set; }
-            public SimulatorResult result { get; set; }
+            var devices = new List<DeviceInfo>();
+
+            // 1. Let xml parser parse the HTML content, but first remove <code> tags to avoid parsing issues
+            string cleanHtml = Regex.Replace(htmlContent, @"<\/?code>", "");
+
+            // 2. Use XDocument to parse (HTML format is loose, it's recommended to convert to XElement)
+            // Assume the input fragment is a table
+            XElement table = XElement.Parse($"<root>{cleanHtml}</root>");
+
+            var rows = table.Descendants("tr").Skip(1); // Skip the header row
+
+            foreach (var row in rows)
+            {
+                var tds = row.Descendants("td").ToList();
+                if (tds.Count >= 4)
+                {
+                    string name = tds[0].Value.Trim();
+                    string rawSource = tds[3].Value.Trim();
+                    List<int> sources = new List<int>();
+
+                    // 3. Get the device source number from the rawSource string, which may contain multiple sources separated by commas
+                    foreach (var source in rawSource.Split(','))
+                    {
+                        string cleanedSource = Regex.Replace(source.Trim(), @"[^\d]", "");
+                        sources.Add(int.Parse(cleanedSource));
+                        
+                    }
+
+                    devices.Add(new DeviceInfo
+                    {
+                        Name = name,
+                        Sources = sources
+                    });
+                }
+            }
+
+            return devices;
         }
 
-        public class SimulatorResult
+        public static string GetDeviceNameBySource(List<DeviceInfo> devices, int sourceToFind)
         {
-            public bool success { get; set; }
-            public string message { get; set; }
+            // Use LINQ to lookup device name by source
+            var device = devices.FirstOrDefault(d => d.Sources.Any(s => s == sourceToFind));
+
+            // Returns Unknown when not found the name
+            return device != null ? device.Name : "Unknown";
         }
 
         public void SimulatorInit(string url)
@@ -286,7 +347,8 @@ namespace zepp_os_push_to_simulator_cs
             string devSourcesStr = "";
             foreach (var item in parseResult.DeviceSource)
             {
-                devSourcesStr += item.ToString();
+                devSourcesStr += GetDeviceNameBySource(deviceInfo ,item);
+                devSourcesStr += $"({item.ToString()})";
                 devSourcesStr += ", ";
             }
             this.BeginInvoke((MethodInvoker)delegate {
@@ -317,22 +379,27 @@ namespace zepp_os_push_to_simulator_cs
             openFileDialog1.Filter = "Zepp OS Package (*.zpk *.zip)|*.zpk; *.zip";
             if(openFileDialog1.ShowDialog() == DialogResult.OK)
             {
-                zpk_loc_Label.Text = $"Package: \n{openFileDialog1.FileName}";
                 zpkBuffer = ReadZpkFile(openFileDialog1.FileName);
+
+                string zpkDirectory = Path.GetDirectoryName(openFileDialog1.FileName);
+                string zpkName = Path.GetFileNameWithoutExtension(openFileDialog1.FileName);
+                // Target: zipDirectory / zipName / device / app.json
+                string jsonFilePath = Path.Combine(zpkDirectory, zpkName, "device", "app.json");
+
+                if (File.Exists(jsonFilePath))
+                {
+                    // Read and parse the app.json to get appId, projectName, and deviceSource
+                    ParseAndRefreshUI(jsonFilePath);
+                    zpk_loc_Label.Text = $"Package: \n{openFileDialog1.FileName}";
+                    json_loc_Label.Text = $"JSON: \n{jsonFilePath}";
+                }
+                else
+                {
+                    MessageBox.Show("app.json not Exist!\n" +
+                        "Seems you not convert your install package!\n" +
+                        "Please use the Pick and Convert function first!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
-        }
-
-        private void pick_json_Btn_Click(object sender, EventArgs e)
-        {
-            openFileDialog1.Filter = "app.json|app.json";
-            if (openFileDialog1.ShowDialog() == DialogResult.OK)
-            {
-                json_loc_Label.Text = $"JSON: \n{openFileDialog1.FileName}";
-
-                // 1. Read and parse the app.json to get appId, projectName, and deviceSource
-                ParseAndRefreshUI(openFileDialog1.FileName);
-            }
-
         }
 
         private void send_Btn_Click(object sender, EventArgs e)
@@ -377,19 +444,14 @@ namespace zepp_os_push_to_simulator_cs
             }
         }
 
-        private async void convertBtn_Click(object sender, EventArgs e)
+        public async void convert_zpk(string zpkPath)
         {
             try
             {
-                // 1. Pick a file (either image with QR code or a ZPK/ZIP)
-                openFileDialog1.Filter = "QR Picture or zip/zpk|*.png;*.jpg;*.jpeg;*.zpk;*.zip";
-                if (openFileDialog1.ShowDialog() != DialogResult.OK) return;
-
                 // Create a base working directory for downloads and conversions
                 string basePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DownloadPackages");
                 if (!Directory.Exists(basePath)) Directory.CreateDirectory(basePath);
 
-                string zpkPath = openFileDialog1.FileName;
                 string zpkName = Path.GetFileNameWithoutExtension(zpkPath);
                 string ext = Path.GetExtension(zpkPath);
 
@@ -421,7 +483,7 @@ namespace zepp_os_push_to_simulator_cs
                 }
 
                 // Creating working directory for the conversion process (will be deleted and recreated if already exists)
-                string workDir = Path.Combine(basePath, zpkName);
+                string workDir = Path.Combine(basePath, zpkName + "-mod");
                 string tempDir = Path.Combine(basePath, "temp");
                 if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
                 if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
@@ -451,22 +513,45 @@ namespace zepp_os_push_to_simulator_cs
                 {
                     throw new Exception("Neither device.zip nor app.json found in the package!");
                 }
-                
+
 
                 // 5. Edit the app.json in the extracted device folder
                 // (open in Notepad, wait for user to save and close, then continue)
                 string appJsonPath = Path.Combine(deviceContentDir, "app.json");
 
-                // No await to make sure the message box shows with the Notepad, and the process waits until the Notepad is closed before continuing.
-                Task msgtask = Task.Run(() => MessageBox.Show("1. Edit the opened app.json, make sure includes's the deviceSource of the target simulating device\n" +
-                    "2. Converts all image backs to the normal png (under \"program_folder\\DownloadPackages\\temp\" !)\n\n" +
-                    "Process will continue when closes the Notepad!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information));
-                await Task.Run(() => {
-                    using (var process = System.Diagnostics.Process.Start("notepad.exe", appJsonPath))
+                Process.Start("explorer.exe", $@"{tempDir}/device/assets");
+                MessageBox.Show("Please convert all of the image backs to the normal png (under \"program_folder\\DownloadPackages\\temp\" !\n\n" +
+                    "Comfirm this dialog to continue the upload process!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                
+                // Step to edit the app.json file, includes the selected device
+                // Read and trims the UTF-8 BOM (3 extra bytes at the start of the file) if it exists
+
+                // Read the app.json file
+                string jsonString = File.ReadAllText(appJsonPath).TrimStart('\uFEFF');
+
+                // Parse the JSON string into a JsonNode for manipulation
+                JsonNode rootNode = JsonNode.Parse(jsonString);
+
+                // Access the "platforms" array and modify it based on the selected device
+                var platformsNode = rootNode["platforms"].AsArray();
+
+                // Update the "platforms" array with the selected device's information
+                if (platformsNode != null && platformsNode.Count > 0)
+                {
+                    int index = devlistCombo.SelectedIndex;
+                    rootNode["platforms"] = new JsonArray
                     {
-                        process.WaitForExit(); // Wait the notepad process
-                    }
-                });
+                        new JsonObject
+                        {
+                            ["name"] = deviceInfo[index].Name,
+                            ["deviceSource"] = deviceInfo[index].Sources[0]
+                        }
+                    };
+                }
+
+                string updatedJson = rootNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(appJsonPath, updatedJson);
 
                 // Removes the UTF-8 BOM
                 StripBomFromFile(appJsonPath);
@@ -522,6 +607,54 @@ namespace zepp_os_push_to_simulator_cs
             {
                 MessageBox.Show($"Convert error: {ex.Message}\n{ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private async void convertBtn_Click(object sender, EventArgs e)
+        {
+            // 1. Pick a file (either image with QR code or a ZPK/ZIP)
+            openFileDialog1.Filter = "QR Picture or zip/zpk|*.png;*.jpg;*.jpeg;*.zpk;*.zip";
+            if (openFileDialog1.ShowDialog() != DialogResult.OK) return;
+
+            convert_zpk(openFileDialog1.FileName);
+        }
+
+        private void MainWindow_Load(object sender, EventArgs e)
+        {
+            // Load the devsource.html file from the application directory
+            string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "devsource.html");
+
+            // 2. Check if the file exists
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    // 3. Read the HTML content from the file
+                    string htmlContent = File.ReadAllText(filePath);
+                    // 4. Call the ParseDeviceTable method to parse the HTML content and get the list of devices
+                    deviceInfo = ParseDeviceTable(htmlContent);
+                    foreach (var device in deviceInfo)
+                    {
+                        devlistCombo.Items.Add(device.Name);
+                    }
+                    devlistCombo.SelectedIndex = 0; // Select the first device by default
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Parse devsource error: {ex.Message}\n{ex.StackTrace}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Application.Exit();
+                }
+            }
+            else
+            {
+                MessageBox.Show($"devsource.html not found!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Application.Exit();
+            }
+        }
+
+        private void devlistCombo_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int index = devlistCombo.SelectedIndex;
+            Console.WriteLine($"[DEBUG] Selected device: {deviceInfo[index].Name}, Sources: {string.Join(", ", deviceInfo[index].Sources)}");
         }
     }
 }
