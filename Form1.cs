@@ -10,10 +10,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Xml.Linq;
 
 namespace zepp_os_push_to_simulator_cs
 {
@@ -67,31 +65,40 @@ namespace zepp_os_push_to_simulator_cs
         /// </summary>
         /// <param name="url">Download URL</param>
         /// <param name="destinationPath">Save path</param>
-        private async Task<string> DownloadFileAsync(string url, string destinationFolder)
+        /// <param name="fallbackFilename">Filename to use if can't determine from headers or URL</param>
+        /// <param name="withHeader">Whether to include headers in the request</param>
+        private async Task<string> DownloadFileAsync(string url, string destinationFolder, string fallbackFilename, bool withHeader)
         {
             string token = "";
 
-            // Read token from the UI, if it's "random" then generate a random token and update the UI with it
-            this.Invoke((MethodInvoker)delegate {
-                if (tokenTextBox.Text == "random")
+            if (withHeader)
+            {
+                // Read token from the UI, if it's "random" then generate a random token and update the UI with it
+                this.Invoke((MethodInvoker)delegate
                 {
-                    token = GenerateRandomToken(255);
-                    tokenTextBox.Text = token;
-                }
-                else
-                {
-                    token = tokenTextBox.Text.Trim();
-                }
-            });
+                    if (tokenTextBox.Text == "random")
+                    {
+                        token = GenerateRandomToken(255);
+                        tokenTextBox.Text = token;
+                    }
+                    else
+                    {
+                        token = tokenTextBox.Text.Trim();
+                    }
+                });
+            }
 
             try
             {
                 var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("Accept-Encoding", "gzip");
-                request.Headers.Add("apptoken", token);
-                request.Headers.Add("Connection", "Keep-Alive");
-                request.Headers.TryAddWithoutValidation("User-Agent", "Dart/3.1 (dart:io)");
-                request.Headers.Accept.Clear();
+                if (withHeader)
+                {
+                    request.Headers.Add("Accept-Encoding", "gzip");
+                    request.Headers.Add("apptoken", token);
+                    request.Headers.Add("Connection", "Keep-Alive");
+                    request.Headers.TryAddWithoutValidation("User-Agent", "Dart/3.1 (dart:io)");
+                    request.Headers.Accept.Clear();
+                }
 
                 using (var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead))
                 {
@@ -120,7 +127,7 @@ namespace zepp_os_push_to_simulator_cs
                     // 3. Default filename if all else fails
                     if (string.IsNullOrEmpty(fileName))
                     {
-                        fileName = "downloaded_package.zpk";
+                        fileName = fallbackFilename;
                     }
 
                     string finalFullPath = Path.Combine(destinationFolder, fileName);
@@ -131,7 +138,7 @@ namespace zepp_os_push_to_simulator_cs
                         await stream.CopyToAsync(fileStream);
                     }
 
-                    Console.WriteLine($"File fully written to: {finalFullPath}");
+                    Console.WriteLine($"[DEBUG] File fully written to: {finalFullPath}");
                     return finalFullPath; // Return the full path of the downloaded file
                 }
             }
@@ -144,45 +151,36 @@ namespace zepp_os_push_to_simulator_cs
             }
         }
 
-        public static List<DeviceInfo> ParseDeviceTable(string htmlContent)
+        public static List<DeviceInfo> ParseDeviceTable(string jsonContent)
         {
-            var devices = new List<DeviceInfo>();
+            var rawList = JsonSerializer.Deserialize<List<JsonElement>>(jsonContent);
 
-            // 1. Let xml parser parse the HTML content, but first remove <code> tags to avoid parsing issues
-            string cleanHtml = Regex.Replace(htmlContent, @"<\/?code>", "");
+            // Use a dictionary to group device sources by product name
+            var deviceMap = new Dictionary<string, HashSet<int>>();
 
-            // 2. Use XDocument to parse (HTML format is loose, it's recommended to convert to XElement)
-            // Assume the input fragment is a table
-            XElement table = XElement.Parse($"<root>{cleanHtml}</root>");
-
-            var rows = table.Descendants("tr").Skip(1); // Skip the header row
-
-            foreach (var row in rows)
+            foreach (var item in rawList)
             {
-                var tds = row.Descendants("td").ToList();
-                if (tds.Count >= 4)
+                // 1. Get the productName and deviceSource from each item
+                if (item.TryGetProperty("productName", out var nameProp))
                 {
-                    string name = tds[0].Value.Trim();
-                    string rawSource = tds[3].Value.Trim();
-                    List<int> sources = new List<int>();
+                    string name = nameProp.GetString();
+                    int source = item.GetProperty("deviceSource").GetInt32();
 
-                    // 3. Get the device source number from the rawSource string, which may contain multiple sources separated by commas
-                    foreach (var source in rawSource.Split(','))
+                    // 2. If the productName is not already in the dictionary, add it with a new HashSet for sources
+                    if (!deviceMap.ContainsKey(name))
                     {
-                        string cleanedSource = Regex.Replace(source.Trim(), @"[^\d]", "");
-                        sources.Add(int.Parse(cleanedSource));
-                        
+                        deviceMap[name] = new HashSet<int>();
                     }
-
-                    devices.Add(new DeviceInfo
-                    {
-                        Name = name,
-                        Sources = sources
-                    });
+                    deviceMap[name].Add(source);
                 }
             }
 
-            return devices;
+            // 3. Convert the dictionary into a list of DeviceInfo objects
+            return deviceMap.Select(kvp => new DeviceInfo
+            {
+                Name = kvp.Key,
+                Sources = kvp.Value.ToList()
+            }).ToList();
         }
 
         public static string GetDeviceNameBySource(List<DeviceInfo> devices, int sourceToFind)
@@ -258,7 +256,7 @@ namespace zepp_os_push_to_simulator_cs
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Connect Error: {ex.Message}");
+                    Console.WriteLine($"[DEBUG] Connect Error: {ex.Message}");
                 }
             });
         }
@@ -352,7 +350,7 @@ namespace zepp_os_push_to_simulator_cs
                 devSourcesStr += ", ";
             }
             this.BeginInvoke((MethodInvoker)delegate {
-                content_Label.Text = $"Content: \nApp ID: {appId}\nProject Name: {projectName}\nPrimary Device Source: ";
+                content_Label.Text = $"Selected Package: \nApp ID: {appId}\nProject Name: {projectName}\nDevice Source: ";
                 content_Label.Text += devSourcesStr;
             });
         }
@@ -470,7 +468,7 @@ namespace zepp_os_push_to_simulator_cs
                         string downloadUrl = result.Text.Replace("zpkd1://", "https://");
 
                         content_Label.Text = "Status: Downloading...";
-                        string filepath = await DownloadFileAsync(downloadUrl, basePath);
+                        string filepath = await DownloadFileAsync(downloadUrl, basePath, "download_watchface.zpk", true);
                         if (filepath == null)
                         {
                             return; // Download failed, error message already shown in DownloadFileAsync
@@ -520,7 +518,7 @@ namespace zepp_os_push_to_simulator_cs
                 string appJsonPath = Path.Combine(deviceContentDir, "app.json");
 
                 Process.Start("explorer.exe", $@"{tempDir}\device\assets");
-                MessageBox.Show("Please convert all of the image backs to the normal png (under \"program_folder\\DownloadPackages\\temp\" !\n\n" +
+                MessageBox.Show("Please convert all of the image backs to the normal png (under \"program_folder\\DownloadPackages\\temp\\device\\assets\"!\n\n" +
                     "Comfirm this dialog to continue the upload process!", "Message", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 
@@ -618,20 +616,27 @@ namespace zepp_os_push_to_simulator_cs
             convert_zpk(openFileDialog1.FileName);
         }
 
-        private void MainWindow_Load(object sender, EventArgs e)
+        private async void MainWindow_Load(object sender, EventArgs e)
         {
-            // Load the devtable.html file from the application directory
-            string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "devtable.html");
+            string filePath = await DownloadFileAsync("https://upload-cdn.zepp.com/zeppos/devkit/zeus/v1/devices.json", 
+                AppDomain.CurrentDomain.BaseDirectory, "devices.json", false);
 
+            if(string.IsNullOrEmpty(filePath))
+            {
+                MessageBox.Show($"Failed to download devices.json!\n" +
+                    $"Will use the downloaded version.", "Message", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // Load the devtable.html file from the application directory
+                filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "devices.json");
+            }
             // 2. Check if the file exists
             if (File.Exists(filePath))
             {
                 try
                 {
-                    // 3. Read the HTML content from the file
-                    string htmlContent = File.ReadAllText(filePath);
-                    // 4. Call the ParseDeviceTable method to parse the HTML content and get the list of devices
-                    deviceInfo = ParseDeviceTable(htmlContent);
+                    // 3. Read the JSON content from the file
+                    string jsonContent = File.ReadAllText(filePath);
+                    // 4. Call the ParseDeviceTable method to parse the JSON content and get the list of devices
+                    deviceInfo = ParseDeviceTable(jsonContent);
                     foreach (var device in deviceInfo)
                     {
                         devlistCombo.Items.Add(device.Name);
@@ -646,7 +651,7 @@ namespace zepp_os_push_to_simulator_cs
             }
             else
             {
-                MessageBox.Show($"devtable.html not found!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"devices.json not found!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Application.Exit();
             }
         }

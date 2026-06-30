@@ -3,9 +3,11 @@ The port of [Bob-YsPan/zepp-os-push-to-simulator](https://github.com/Bob-YsPan/z
 
 This program uses the same principles and usage methods as the original repository, now is the main tool to help people to convert/upload its zepp package into the simulator!
 
-<img src="cap1.png" width=50%>
+<img src="ani1.gif" width=100%>
 
 <img src="cap2.png" width=75%>
+
+<img src="cap1.png" width=50%>
 
 ## Instructions
 
@@ -20,6 +22,7 @@ This program uses the same principles and usage methods as the original reposito
 4. The program will do the zpk file extraction. When it is finished, it will pop up a Message box about the image conversion, and open the explorer of the temp assets' directory. You can convert images using these options:
     * If this package is downloaded from the internet, you can use tools to convert all images back to the correct png using the `ImageToZeppOS` tool made by [SashaCX75](https://amazfitwatchfaces.com/forum/memberlist.php?mode=viewprofile&u=113690) ( [Dropbox](https://www.dropbox.com/s/ugmfqg0xdv8qbcd/ImageToZeppOS.zip?dl=0) ) 
     * If you are testing the project you developed, just replace all PNGs with the project folder's PNG files.
+    * All image assets that need to be converted are under the `program_folder\DownloadPackages\temp\device\assets`. The program will open it by explorer automatically.
 5. After confirming the message box, the conversion will continue. After conversion is done, you can click the `Connect` and then `Upload` buttom to upload the package into the simulator. 
 
 ### Pick Converted file
@@ -35,7 +38,7 @@ This program uses the same principles and usage methods as the original reposito
     1. **You can just extract zpk and then extract inner device.zip to get this structure!**
     2. **`device.zip` needs to use normal PNGs, not the encoded format that is used on an actual watch!**
     2. **`app.json` needs to include the device source that matches your simulator!**
-    3. **The modded package and extracted folder that are converted by this tool will be in the `DownloadPackages` folder under the program's folder, and include the `-mod` suffix at the end.**
+    3. **The converted package and extracted folder that are converted by this tool will be in the `DownloadPackages` folder under the program's folder, and include the `-mod` suffix at the end.**
 2. Use the `Pick ZPK/ZIP With Extracted Folder` tool, pick the zpk file (like `your_package.zpk` on step 1) .
 3. Check the `Content` area, make sure the package you selected is correct.
 4. Click the `Connect` and then `Upload` buttom to upload the package into the simulator. 

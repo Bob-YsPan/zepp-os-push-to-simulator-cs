@@ -83,9 +83,9 @@
             this.content_Label.Location = new System.Drawing.Point(24, 423);
             this.content_Label.MaximumSize = new System.Drawing.Size(466, 0);
             this.content_Label.Name = "content_Label";
-            this.content_Label.Size = new System.Drawing.Size(72, 21);
+            this.content_Label.Size = new System.Drawing.Size(135, 21);
             this.content_Label.TabIndex = 3;
-            this.content_Label.Text = "Content: ";
+            this.content_Label.Text = "Selected Package: ";
             // 
             // json_loc_Label
             // 
